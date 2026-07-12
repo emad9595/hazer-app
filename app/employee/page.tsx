@@ -18,7 +18,7 @@ type OpenShift = {
 type Coords = { lat: number; lng: number } | null;
 
 const HOLD_DURATION_MS = 1100;
-const NESHAN_API_KEY = process.env.NEXT_PUBLIC_NESHAN_API_KEY;
+const MAPIR_API_KEY = process.env.NEXT_PUBLIC_MAPIR_API_KEY;
 
 function getLocation(): Promise<Coords> {
   return new Promise((resolve) => {
@@ -53,10 +53,35 @@ function getLocation(): Promise<Coords> {
   });
 }
 
-function staticMapUrl(coords: Coords) {
-  if (!coords || !NESHAN_API_KEY) return null;
+/**
+ * Map.ir's Static Map API requires the API key to be sent as an
+ * "x-api-key" HTTP header (not a URL query parameter), so a plain
+ * <img src="..."> can't authenticate on its own. We fetch the image
+ * ourselves with the correct header and turn the result into a
+ * temporary blob URL that <img> can display normally.
+ */
+async function fetchStaticMapBlobUrl(coords: Coords): Promise<string | null> {
+  if (!coords || !MAPIR_API_KEY) return null;
   const { lat, lng } = coords;
-  return `https://api.neshan.org/v4/static?key=${NESHAN_API_KEY}&type=neshan&center=${lat},${lng}&zoom=16&width=500&height=220&marker=${lat},${lng}`;
+
+  const params = new URLSearchParams({
+    width: "500",
+    height: "220",
+    zoom_level: "16",
+    markers: `color:origin|label:حاضر|${lng},${lat}`,
+    center: `${lat},${lng}`,
+  });
+
+  try {
+    const res = await fetch(`https://map.ir/static?${params.toString()}`, {
+      headers: { "x-api-key": MAPIR_API_KEY },
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -149,6 +174,23 @@ export default function EmployeePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [lastCoords, setLastCoords] = useState<Coords>(null);
+  const [mapImageUrl, setMapImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    (async () => {
+      const url = await fetchStaticMapBlobUrl(lastCoords);
+      if (!cancelled) {
+        objectUrl = url;
+        setMapImageUrl(url);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [lastCoords]);
 
   const loadData = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -242,7 +284,6 @@ export default function EmployeePage() {
   const hours = Math.floor(elapsedSeconds / 3600);
   const minutes = Math.floor((elapsedSeconds % 3600) / 60);
   const seconds = elapsedSeconds % 60;
-  const mapUrl = staticMapUrl(lastCoords);
 
   return (
     <main className="max-w-md mx-auto px-4 py-8">
@@ -267,9 +308,9 @@ export default function EmployeePage() {
               </p>
             </div>
           )}
-          {mapUrl && (
+          {mapImageUrl && (
             <img
-              src={mapUrl}
+              src={mapImageUrl}
               alt="موقعیت ثبت ورود"
               className="w-full rounded-xl mb-4 border border-white/20"
             />
@@ -284,9 +325,9 @@ export default function EmployeePage() {
         </div>
       ) : (
         <>
-          {mapUrl && (
+          {mapImageUrl && (
             <img
-              src={mapUrl}
+              src={mapImageUrl}
               alt="موقعیت ثبت خروج قبلی"
               className="w-full rounded-xl mb-4 border border-slate-100"
             />
