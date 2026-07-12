@@ -26,14 +26,29 @@ function getLocation(): Promise<Coords> {
       resolve(null);
       return;
     }
+    let settled = false;
+    const finish = (value: Coords) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    // Backup timer: some browser/OS combinations ignore the geolocation
+    // API's own timeout option, so we enforce our own hard cutoff too.
+    const backupTimer = setTimeout(() => finish(null), 3000);
+
     navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({
+      (position) => {
+        clearTimeout(backupTimer);
+        finish({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
-        }),
-      () => resolve(null),
-      { timeout: 5000, maximumAge: 30000 }
+        });
+      },
+      () => {
+        clearTimeout(backupTimer);
+        finish(null);
+      },
+      { timeout: 3000, maximumAge: 30000 }
     );
   });
 }
