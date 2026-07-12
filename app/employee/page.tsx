@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -15,6 +15,115 @@ type OpenShift = {
   check_in_at: string;
 };
 
+type Coords = { lat: number; lng: number } | null;
+
+const HOLD_DURATION_MS = 1100;
+const NESHAN_API_KEY = process.env.NEXT_PUBLIC_NESHAN_API_KEY;
+
+function getLocation(): Promise<Coords> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        }),
+      () => resolve(null),
+      { timeout: 5000, maximumAge: 30000 }
+    );
+  });
+}
+
+function staticMapUrl(coords: Coords) {
+  if (!coords || !NESHAN_API_KEY) return null;
+  const { lat, lng } = coords;
+  return `https://api.neshan.org/v4/static?key=${NESHAN_API_KEY}&type=neshan&center=${lat},${lng}&zoom=16&width=500&height=220&marker=${lat},${lng}`;
+}
+
+/**
+ * Press-and-hold button used for check-in / check-out.
+ * Filling ring gives a visual, self-explanatory cue without any text
+ * instructions — inspired by the "hold to accept" pattern in ride-hailing apps.
+ */
+function HoldButton({
+  label,
+  busyLabel,
+  busy,
+  onConfirm,
+  variant = "primary",
+}: {
+  label: string;
+  busyLabel: string;
+  busy: boolean;
+  onConfirm: () => void;
+  variant?: "primary" | "light";
+}) {
+  const [progress, setProgress] = useState(0);
+  const startRef = useRef<number | null>(null);
+  const frameRef = useRef<number | null>(null);
+
+  const stop = useCallback(() => {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+    startRef.current = null;
+    setProgress(0);
+  }, []);
+
+  const tick = useCallback(() => {
+    if (startRef.current === null) return;
+    const elapsed = Date.now() - startRef.current;
+    const pct = Math.min(100, (elapsed / HOLD_DURATION_MS) * 100);
+    setProgress(pct);
+    if (pct >= 100) {
+      stop();
+      onConfirm();
+      return;
+    }
+    frameRef.current = requestAnimationFrame(tick);
+  }, [onConfirm, stop]);
+
+  const start = useCallback(() => {
+    if (busy) return;
+    startRef.current = Date.now();
+    frameRef.current = requestAnimationFrame(tick);
+  }, [busy, tick]);
+
+  useEffect(() => stop, [stop]);
+
+  const isPrimary = variant === "primary";
+  const ringColor = isPrimary ? "#ffffff" : "#0d9488";
+
+  return (
+    <button
+      onPointerDown={start}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      disabled={busy}
+      style={{
+        backgroundImage: `conic-gradient(${ringColor} ${progress}%, transparent ${progress}%)`,
+      }}
+      className={`relative w-full py-5 rounded-2xl text-lg font-bold select-none touch-none transition-transform active:scale-[0.98] disabled:opacity-60 ${
+        isPrimary
+          ? "bg-gradient-to-br from-cyan-600 to-teal-500 text-white shadow-lg shadow-teal-500/20"
+          : "bg-white text-teal-700"
+      }`}
+    >
+      <span
+        className={`absolute inset-[3px] rounded-2xl flex items-center justify-center ${
+          isPrimary ? "bg-gradient-to-br from-cyan-600 to-teal-500" : "bg-white"
+        }`}
+      >
+        {busy ? busyLabel : progress > 0 ? "نگه دارید..." : label}
+      </span>
+    </button>
+  );
+}
+
 export default function EmployeePage() {
   const router = useRouter();
   const supabase = createClient();
@@ -24,6 +133,7 @@ export default function EmployeePage() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [lastCoords, setLastCoords] = useState<Coords>(null);
 
   const loadData = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -67,26 +177,19 @@ export default function EmployeePage() {
   async function handleCheckIn() {
     setBusy(true);
     const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-
-    let coords: { lat: number | null; lng: number | null } = {
-      lat: null,
-      lng: null,
-    };
-    try {
-      const position = await new Promise<GeolocationPosition>(
-        (resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject)
-      );
-      coords = { lat: position.coords.latitude, lng: position.coords.longitude };
-    } catch {
-      // location optional; continue without it
+    if (!userData.user) {
+      setBusy(false);
+      return;
     }
+
+    const coords = await getLocation();
+    setLastCoords(coords);
 
     await supabase.from("attendance_records").insert({
       employee_id: userData.user.id,
       status: "open",
-      check_in_lat: coords.lat,
-      check_in_lng: coords.lng,
+      check_in_lat: coords?.lat ?? null,
+      check_in_lng: coords?.lng ?? null,
     });
 
     setBusy(false);
@@ -97,25 +200,15 @@ export default function EmployeePage() {
     if (!openShift) return;
     setBusy(true);
 
-    let coords: { lat: number | null; lng: number | null } = {
-      lat: null,
-      lng: null,
-    };
-    try {
-      const position = await new Promise<GeolocationPosition>(
-        (resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject)
-      );
-      coords = { lat: position.coords.latitude, lng: position.coords.longitude };
-    } catch {
-      // ignore
-    }
+    const coords = await getLocation();
+    setLastCoords(coords);
 
     await supabase
       .from("attendance_records")
       .update({
         check_out_at: new Date().toISOString(),
-        check_out_lat: coords.lat,
-        check_out_lng: coords.lng,
+        check_out_lat: coords?.lat ?? null,
+        check_out_lng: coords?.lng ?? null,
         status: "closed",
       })
       .eq("id", openShift.id);
@@ -134,6 +227,7 @@ export default function EmployeePage() {
   const hours = Math.floor(elapsedSeconds / 3600);
   const minutes = Math.floor((elapsedSeconds % 3600) / 60);
   const seconds = elapsedSeconds % 60;
+  const mapUrl = staticMapUrl(lastCoords);
 
   return (
     <main className="max-w-md mx-auto px-4 py-8">
@@ -158,22 +252,38 @@ export default function EmployeePage() {
               </p>
             </div>
           )}
-          <button
-            onClick={handleCheckOut}
-            disabled={busy}
-            className="w-full py-3 rounded-xl bg-white text-teal-700 font-bold disabled:opacity-60"
-          >
-            {busy ? "..." : "ثبت خروج"}
-          </button>
+          {mapUrl && (
+            <img
+              src={mapUrl}
+              alt="موقعیت ثبت ورود"
+              className="w-full rounded-xl mb-4 border border-white/20"
+            />
+          )}
+          <HoldButton
+            label="نگه دارید برای ثبت خروج"
+            busyLabel="..."
+            busy={busy}
+            onConfirm={handleCheckOut}
+            variant="light"
+          />
         </div>
       ) : (
-        <button
-          onClick={handleCheckIn}
-          disabled={busy}
-          className="w-full py-5 rounded-2xl bg-gradient-to-br from-cyan-600 to-teal-500 text-white text-lg font-bold shadow-lg shadow-teal-500/20 disabled:opacity-60"
-        >
-          {busy ? "..." : "ثبت ورود"}
-        </button>
+        <>
+          {mapUrl && (
+            <img
+              src={mapUrl}
+              alt="موقعیت ثبت خروج قبلی"
+              className="w-full rounded-xl mb-4 border border-slate-100"
+            />
+          )}
+          <HoldButton
+            label="نگه دارید برای ثبت ورود"
+            busyLabel="..."
+            busy={busy}
+            onConfirm={handleCheckIn}
+            variant="primary"
+          />
+        </>
       )}
     </main>
   );
