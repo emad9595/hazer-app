@@ -8,6 +8,7 @@ type Profile = {
   id: string;
   full_name: string | null;
   hourly_wage: number | null;
+  organization_id: string | null;
 };
 
 type OpenShift = {
@@ -201,7 +202,7 @@ export default function EmployeePage() {
 
     const { data: profileData } = await supabase
       .from("profiles")
-      .select("id, full_name, hourly_wage")
+      .select("id, full_name, hourly_wage, organization_id")
       .eq("id", userData.user.id)
       .single();
     setProfile(profileData);
@@ -244,6 +245,7 @@ export default function EmployeePage() {
 
     await supabase.from("attendance_records").insert({
       employee_id: userData.user.id,
+      organization_id: profile?.organization_id ?? null,
       status: "open",
       check_in_lat: coords?.lat ?? null,
       check_in_lng: coords?.lng ?? null,
