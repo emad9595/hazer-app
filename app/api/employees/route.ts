@@ -4,7 +4,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
-    const { fullName, email, password, hourlyWage } = await request.json();
+    const {
+      fullName,
+      email,
+      password,
+      hourlyWage,
+      position,
+      department,
+      nationalCode,
+      employeeCode,
+      startDate,
+      salaryType,
+      monthlySalary,
+    } = await request.json();
 
     if (!fullName || !email || !password) {
       return NextResponse.json(
@@ -58,6 +70,13 @@ export async function POST(request: Request) {
       role: "employee",
       full_name: fullName,
       hourly_wage: hourlyWage || null,
+      position: position || null,
+      department: department || null,
+      national_code: nationalCode || null,
+      employee_code: employeeCode || null,
+      start_date: startDate || null,
+      salary_type: salaryType || "hourly",
+      monthly_salary: monthlySalary || null,
     });
 
     if (profileError) {
