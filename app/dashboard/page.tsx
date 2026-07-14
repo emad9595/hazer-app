@@ -93,6 +93,39 @@ export default function DashboardPage() {
     load();
   }, [load]);
 
+  // Live updates: whenever an attendance record changes (check-in or
+  // check-out), reflect it immediately without requiring a page refresh.
+  useEffect(() => {
+    const channel = supabase
+      .channel("attendance-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attendance_records" },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as {
+            employee_id: string;
+            status: string;
+          };
+          if (!row?.employee_id) return;
+
+          setWorkingNow((prev) => {
+            const next = new Set(prev);
+            if (payload.eventType !== "DELETE" && row.status === "open") {
+              next.add(row.employee_id);
+            } else {
+              next.delete(row.employee_id);
+            }
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
   async function handleAddEmployee(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
