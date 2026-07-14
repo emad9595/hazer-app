@@ -3,12 +3,16 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { formatShamsiDate, formatPersianTime } from "@/lib/shamsi";
 
 type Profile = {
   id: string;
   full_name: string | null;
   hourly_wage: number | null;
   organization_id: string | null;
+  position: string | null;
+  department: string | null;
+  employee_code: string | null;
 };
 
 type OpenShift = {
@@ -193,6 +197,12 @@ export default function EmployeePage() {
   const [busy, setBusy] = useState(false);
   const [lastCoords, setLastCoords] = useState<Coords>(null);
   const [locationVerified, setLocationVerified] = useState<boolean | null>(null);
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000 * 30);
+    return () => clearInterval(interval);
+  }, []);
   const [mapImageUrl, setMapImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -220,7 +230,7 @@ export default function EmployeePage() {
 
     const { data: profileData } = await supabase
       .from("profiles")
-      .select("id, full_name, hourly_wage, organization_id")
+      .select("id, full_name, hourly_wage, organization_id, position, department, employee_code")
       .eq("id", userData.user.id)
       .single();
     setProfile(profileData);
@@ -331,7 +341,16 @@ export default function EmployeePage() {
       <h1 className="text-xl font-bold mb-1">
         سلام {profile?.full_name ?? ""} 👋
       </h1>
-      <p className="text-slate-500 text-sm mb-6">امروز آماده کاری؟</p>
+      <div className="flex items-center justify-between text-slate-500 text-sm mb-1">
+        <span>{formatShamsiDate(now)}</span>
+        <span className="font-mono">{formatPersianTime(now)}</span>
+      </div>
+      {(profile?.position || profile?.department) && (
+        <p className="text-xs text-slate-400 mb-4">
+          {[profile.position, profile.department].filter(Boolean).join(" · ")}
+          {profile.employee_code ? ` · کد پرسنلی: ${profile.employee_code}` : ""}
+        </p>
+      )}
 
       {openShift ? (
         <div className="rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white p-6 mb-4 text-center">
