@@ -16,6 +16,9 @@ type Organization = {
   id: string;
   name: string;
   phone: string | null;
+  work_lat: number | null;
+  work_lng: number | null;
+  work_radius_meters: number | null;
 };
 
 export default function DashboardPage() {
@@ -42,6 +45,9 @@ export default function DashboardPage() {
   const [orgNameDraft, setOrgNameDraft] = useState("");
   const [orgPhoneDraft, setOrgPhoneDraft] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
+  const [radiusDraft, setRadiusDraft] = useState("150");
+  const [capturingLocation, setCapturingLocation] = useState(false);
+  const [locationMsg, setLocationMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -63,12 +69,13 @@ export default function DashboardPage() {
 
     const { data: orgData } = await supabase
       .from("organizations")
-      .select("id, name, phone")
+      .select("id, name, phone, work_lat, work_lng, work_radius_meters")
       .eq("id", profile.organization_id)
       .single();
     setOrg(orgData);
     setOrgNameDraft(orgData?.name ?? "");
     setOrgPhoneDraft(orgData?.phone ?? "");
+    setRadiusDraft(String(orgData?.work_radius_meters ?? 150));
 
     const { data: emps } = await supabase
       .from("profiles")
@@ -190,6 +197,32 @@ export default function DashboardPage() {
       .eq("id", org.id);
     setSavingOrg(false);
     load();
+  }
+
+  function captureWorkLocation() {
+    if (!org || !navigator.geolocation) return;
+    setCapturingLocation(true);
+    setLocationMsg(null);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        await supabase
+          .from("organizations")
+          .update({
+            work_lat: position.coords.latitude,
+            work_lng: position.coords.longitude,
+            work_radius_meters: Number(radiusDraft) || 150,
+          })
+          .eq("id", org.id);
+        setCapturingLocation(false);
+        setLocationMsg("موقعیت محل کار با موفقیت ثبت شد.");
+        load();
+      },
+      () => {
+        setCapturingLocation(false);
+        setLocationMsg("دریافت موقعیت مکانی ممکن نشد. لطفاً دسترسی GPS را بررسی کنید.");
+      },
+      { timeout: 8000 }
+    );
   }
 
   if (loading) {
@@ -375,6 +408,50 @@ export default function DashboardPage() {
             {savingOrg ? "در حال ذخیره..." : "ذخیره تنظیمات"}
           </button>
         </form>
+
+        <div className="mt-6 pt-6 border-t border-slate-100">
+          <h3 className="font-bold text-sm mb-1">موقعیت محل کار</h3>
+          <p className="text-xs text-slate-400 mb-3">
+            ثبت تردد کارکنان با این موقعیت مقایسه می‌شود تا مشخص شود در محل کار
+            بوده‌اند یا خیر.
+          </p>
+
+          {org?.work_lat ? (
+            <p className="text-xs text-teal-700 bg-teal-50 rounded-lg px-3 py-2 mb-3">
+              موقعیت ثبت شده — شعاع مجاز: {org.work_radius_meters} متر
+            </p>
+          ) : (
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
+              هنوز موقعیتی ثبت نشده — ثبت تردد بدون بررسی محدوده انجام می‌شود.
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 mb-3">
+            <label className="text-sm text-slate-500 whitespace-nowrap">
+              شعاع مجاز (متر)
+            </label>
+            <input
+              type="number"
+              value={radiusDraft}
+              onChange={(e) => setRadiusDraft(e.target.value)}
+              className="w-24 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+              dir="ltr"
+            />
+          </div>
+
+          <button
+            onClick={captureWorkLocation}
+            disabled={capturingLocation}
+            className="w-full py-2.5 rounded-lg border border-teal-600 text-teal-700 text-sm font-bold disabled:opacity-60"
+          >
+            {capturingLocation
+              ? "در حال دریافت موقعیت..."
+              : "📍 موقعیت فعلی من را به‌عنوان محل کار ثبت کن"}
+          </button>
+          {locationMsg && (
+            <p className="text-xs text-slate-500 mt-2">{locationMsg}</p>
+          )}
+        </div>
       </div>
     </main>
   );
