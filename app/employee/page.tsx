@@ -54,6 +54,23 @@ function getLocation(): Promise<Coords> {
   });
 }
 
+function distanceMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+) {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
 /**
  * Map.ir's Static Map API requires the API key to be sent as an
  * "x-api-key" HTTP header (not a URL query parameter), so a plain
@@ -175,6 +192,7 @@ export default function EmployeePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [lastCoords, setLastCoords] = useState<Coords>(null);
+  const [locationVerified, setLocationVerified] = useState<boolean | null>(null);
   const [mapImageUrl, setMapImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -243,12 +261,33 @@ export default function EmployeePage() {
     const coords = await getLocation();
     setLastCoords(coords);
 
+    let locationVerified: boolean | null = null;
+    if (coords && profile?.organization_id) {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("work_lat, work_lng, work_radius_meters")
+        .eq("id", profile.organization_id)
+        .single();
+
+      if (org?.work_lat && org?.work_lng) {
+        const distance = distanceMeters(
+          coords.lat,
+          coords.lng,
+          org.work_lat,
+          org.work_lng
+        );
+        locationVerified = distance <= (org.work_radius_meters ?? 150);
+      }
+    }
+    setLocationVerified(locationVerified);
+
     await supabase.from("attendance_records").insert({
       employee_id: userData.user.id,
       organization_id: profile?.organization_id ?? null,
       status: "open",
       check_in_lat: coords?.lat ?? null,
       check_in_lng: coords?.lng ?? null,
+      location_verified: locationVerified,
     });
 
     setBusy(false);
@@ -316,6 +355,17 @@ export default function EmployeePage() {
               alt="موقعیت ثبت ورود"
               className="w-full rounded-xl mb-4 border border-white/20"
             />
+          )}
+          {locationVerified !== null && (
+            <p
+              className={`text-xs mb-4 rounded-lg py-2 px-3 ${
+                locationVerified ? "bg-white/15" : "bg-amber-400/30"
+              }`}
+            >
+              {locationVerified
+                ? "✓ موقعیت شما در محدوده محل کار تایید شد"
+                : "⚠ موقعیت شما خارج از محدوده محل کار ثبت شد"}
+            </p>
           )}
           <HoldButton
             label="نگه دارید برای ثبت خروج"
