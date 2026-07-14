@@ -38,6 +38,14 @@ export default function DashboardPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [hourlyWage, setHourlyWage] = useState("");
+  const [showExtraFields, setShowExtraFields] = useState(false);
+  const [position, setPosition] = useState("");
+  const [department, setDepartment] = useState("");
+  const [nationalCode, setNationalCode] = useState("");
+  const [employeeCode, setEmployeeCode] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [salaryType, setSalaryType] = useState<"hourly" | "monthly">("hourly");
+  const [monthlySalary, setMonthlySalary] = useState("");
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editWage, setEditWage] = useState("");
@@ -146,6 +154,13 @@ export default function DashboardPage() {
         email,
         password,
         hourlyWage: hourlyWage ? Number(hourlyWage) : null,
+        position: position || null,
+        department: department || null,
+        nationalCode: nationalCode || null,
+        employeeCode: employeeCode || null,
+        startDate: startDate || null,
+        salaryType,
+        monthlySalary: monthlySalary ? Number(monthlySalary) : null,
       }),
     });
     const result = await res.json();
@@ -160,6 +175,14 @@ export default function DashboardPage() {
     setEmail("");
     setPassword("");
     setHourlyWage("");
+    setPosition("");
+    setDepartment("");
+    setNationalCode("");
+    setEmployeeCode("");
+    setStartDate("");
+    setSalaryType("hourly");
+    setMonthlySalary("");
+    setShowExtraFields(false);
     setShowAddForm(false);
     setSubmitting(false);
     load();
@@ -305,6 +328,106 @@ export default function DashboardPage() {
                 dir="ltr"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setShowExtraFields((v) => !v)}
+              className="text-xs text-teal-700 underline"
+            >
+              {showExtraFields ? "پنهان کردن اطلاعات تکمیلی" : "+ افزودن اطلاعات تکمیلی (سمت، دپارتمان و ...)"}
+            </button>
+
+            {showExtraFields && (
+              <div className="space-y-3 pt-2 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm font-medium">سمت شغلی</label>
+                    <input
+                      value={position}
+                      onChange={(e) => setPosition(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">دپارتمان</label>
+                    <input
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm font-medium">کد ملی</label>
+                    <input
+                      value={nationalCode}
+                      onChange={(e) => setNationalCode(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">کد پرسنلی</label>
+                    <input
+                      value={employeeCode}
+                      onChange={(e) => setEmployeeCode(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">تاریخ شروع به کار</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">نوع حقوق</label>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSalaryType("hourly")}
+                      className={`flex-1 py-2 rounded-lg text-sm border ${
+                        salaryType === "hourly"
+                          ? "bg-teal-600 text-white border-teal-600"
+                          : "border-slate-200 bg-white"
+                      }`}
+                    >
+                      ساعتی
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSalaryType("monthly")}
+                      className={`flex-1 py-2 rounded-lg text-sm border ${
+                        salaryType === "monthly"
+                          ? "bg-teal-600 text-white border-teal-600"
+                          : "border-slate-200 bg-white"
+                      }`}
+                    >
+                      حقوق ثابت ماهانه
+                    </button>
+                  </div>
+                </div>
+                {salaryType === "monthly" && (
+                  <div>
+                    <label className="text-sm font-medium">حقوق ثابت ماهانه (تومان)</label>
+                    <input
+                      type="number"
+                      value={monthlySalary}
+                      onChange={(e) => setMonthlySalary(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                      dir="ltr"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               disabled={submitting}
               className="w-full py-2.5 rounded-lg bg-teal-600 text-white font-bold disabled:opacity-60"
