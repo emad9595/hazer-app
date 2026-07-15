@@ -12,6 +12,15 @@ type Employee = {
   is_active: boolean;
 };
 
+type LeaveRequest = {
+  id: string;
+  employee_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: "pending" | "approved" | "rejected";
+};
+
 type Organization = {
   id: string;
   name: string;
@@ -28,6 +37,7 @@ export default function DashboardPage() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [workingNow, setWorkingNow] = useState<Set<string>>(new Set());
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -100,6 +110,13 @@ export default function DashboardPage() {
         .eq("status", "open");
       setWorkingNow(new Set((openShifts ?? []).map((s) => s.employee_id)));
     }
+
+    const { data: leaves } = await supabase
+      .from("leave_requests")
+      .select("id, employee_id, start_date, end_date, reason, status")
+      .eq("organization_id", profile.organization_id)
+      .order("created_at", { ascending: false });
+    setLeaveRequests(leaves ?? []);
 
     setLoading(false);
   }, [router, supabase]);
@@ -207,6 +224,14 @@ export default function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ employeeId, isActive: !current }),
     });
+    load();
+  }
+
+  async function reviewLeave(id: string, status: "approved" | "rejected") {
+    await supabase
+      .from("leave_requests")
+      .update({ status, reviewed_at: new Date().toISOString() })
+      .eq("id", id);
     load();
   }
 
@@ -499,6 +524,65 @@ export default function DashboardPage() {
                 </div>
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Leave requests */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-5">
+        <h2 className="font-bold mb-4">
+          درخواست‌های مرخصی{" "}
+          <span className="text-slate-400 font-normal text-sm">
+            ({leaveRequests.filter((l) => l.status === "pending").length} در انتظار)
+          </span>
+        </h2>
+        {leaveRequests.length === 0 ? (
+          <p className="text-slate-400 text-sm">درخواستی ثبت نشده است.</p>
+        ) : (
+          <ul className="space-y-2">
+            {leaveRequests.map((r) => {
+              const emp = employees.find((e) => e.id === r.employee_id);
+              return (
+                <li
+                  key={r.id}
+                  className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-2"
+                >
+                  <div>
+                    <p className="font-medium">{emp?.full_name ?? "کارمند"}</p>
+                    <p className="text-xs text-slate-400">
+                      {r.start_date} تا {r.end_date}
+                      {r.reason ? ` — ${r.reason}` : ""}
+                    </p>
+                  </div>
+                  {r.status === "pending" ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => reviewLeave(r.id, "approved")}
+                        className="text-xs px-2 py-1 rounded bg-green-600 text-white"
+                      >
+                        تایید
+                      </button>
+                      <button
+                        onClick={() => reviewLeave(r.id, "rejected")}
+                        className="text-xs px-2 py-1 rounded bg-red-500 text-white"
+                      >
+                        رد
+                      </button>
+                    </div>
+                  ) : (
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        r.status === "approved"
+                          ? "bg-green-50 text-green-700"
+                          : "bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {r.status === "approved" ? "تایید شده" : "رد شده"}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
