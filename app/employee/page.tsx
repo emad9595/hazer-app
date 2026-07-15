@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatShamsiDate, formatPersianTime } from "@/lib/shamsi";
+import JalaliDatePicker from "@/components/JalaliDatePicker";
 
 type Profile = {
   id: string;
@@ -424,6 +425,8 @@ type LeaveRequest = {
   end_date: string;
   reason: string | null;
   status: "pending" | "approved" | "rejected";
+  leave_type: "full_day" | "hourly";
+  hours: number | null;
 };
 
 function LeaveSection({
@@ -438,13 +441,15 @@ function LeaveSection({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
+  const [leaveType, setLeaveType] = useState<"full_day" | "hourly">("full_day");
+  const [hours, setHours] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const loadRequests = useCallback(async () => {
     if (!profile) return;
     const { data } = await supabase
       .from("leave_requests")
-      .select("id, start_date, end_date, reason, status")
+      .select("id, start_date, end_date, reason, status, leave_type, hours")
       .eq("employee_id", profile.id)
       .order("created_at", { ascending: false });
     setRequests(data ?? []);
@@ -462,12 +467,16 @@ function LeaveSection({
       employee_id: profile.id,
       organization_id: profile.organization_id,
       start_date: startDate,
-      end_date: endDate,
+      end_date: leaveType === "hourly" ? startDate : endDate,
       reason: reason || null,
+      leave_type: leaveType,
+      hours: leaveType === "hourly" ? Number(hours) || null : null,
     });
     setStartDate("");
     setEndDate("");
     setReason("");
+    setHours("");
+    setLeaveType("full_day");
     setShowForm(false);
     setSubmitting(false);
     loadRequests();
@@ -498,30 +507,71 @@ function LeaveSection({
 
       {showForm && (
         <form onSubmit={handleSubmit} className="space-y-3 mb-4 p-3 rounded-xl bg-slate-50">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium">از تاریخ</label>
-              <input
-                required
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm bg-white"
-                dir="ltr"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium">تا تاریخ</label>
-              <input
-                required
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm bg-white"
-                dir="ltr"
-              />
-            </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setLeaveType("full_day")}
+              className={`flex-1 py-2 rounded-lg text-sm border ${
+                leaveType === "full_day"
+                  ? "bg-teal-600 text-white border-teal-600"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              روز کامل
+            </button>
+            <button
+              type="button"
+              onClick={() => setLeaveType("hourly")}
+              className={`flex-1 py-2 rounded-lg text-sm border ${
+                leaveType === "hourly"
+                  ? "bg-teal-600 text-white border-teal-600"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              ساعتی
+            </button>
           </div>
+
+          {leaveType === "full_day" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-medium">از تاریخ</label>
+                <div className="mt-1">
+                  <JalaliDatePicker value={startDate} onChange={setStartDate} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium">تا تاریخ</label>
+                <div className="mt-1">
+                  <JalaliDatePicker value={endDate} onChange={setEndDate} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-medium">تاریخ</label>
+                <div className="mt-1">
+                  <JalaliDatePicker value={startDate} onChange={setStartDate} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium">تعداد ساعت</label>
+                <input
+                  required
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="12"
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm bg-white"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="text-xs font-medium">دلیل (اختیاری)</label>
             <input
@@ -549,7 +599,12 @@ function LeaveSection({
               className="flex items-center justify-between text-xs bg-slate-50 rounded-lg px-3 py-2"
             >
               <span>
-                {r.start_date} تا {r.end_date}
+                {formatShamsiDate(new Date(r.start_date))}
+                {r.leave_type === "hourly"
+                  ? ` — ${r.hours} ساعت`
+                  : r.end_date !== r.start_date
+                  ? ` تا ${formatShamsiDate(new Date(r.end_date))}`
+                  : ""}
               </span>
               <span className={`px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>
                 {statusLabel[r.status]}
