@@ -412,6 +412,152 @@ export default function EmployeePage() {
           />
         </>
       )}
+
+      <LeaveSection profile={profile} supabase={supabase} />
     </main>
+  );
+}
+
+type LeaveRequest = {
+  id: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: "pending" | "approved" | "rejected";
+};
+
+function LeaveSection({
+  profile,
+  supabase,
+}: {
+  profile: Profile | null;
+  supabase: ReturnType<typeof createClient>;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadRequests = useCallback(async () => {
+    if (!profile) return;
+    const { data } = await supabase
+      .from("leave_requests")
+      .select("id, start_date, end_date, reason, status")
+      .eq("employee_id", profile.id)
+      .order("created_at", { ascending: false });
+    setRequests(data ?? []);
+  }, [profile, supabase]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!profile) return;
+    setSubmitting(true);
+    await supabase.from("leave_requests").insert({
+      employee_id: profile.id,
+      organization_id: profile.organization_id,
+      start_date: startDate,
+      end_date: endDate,
+      reason: reason || null,
+    });
+    setStartDate("");
+    setEndDate("");
+    setReason("");
+    setShowForm(false);
+    setSubmitting(false);
+    loadRequests();
+  }
+
+  const statusLabel: Record<LeaveRequest["status"], string> = {
+    pending: "در انتظار بررسی",
+    approved: "تایید شده",
+    rejected: "رد شده",
+  };
+  const statusColor: Record<LeaveRequest["status"], string> = {
+    pending: "bg-amber-50 text-amber-700",
+    approved: "bg-green-50 text-green-700",
+    rejected: "bg-red-50 text-red-700",
+  };
+
+  return (
+    <div className="mt-6 bg-white rounded-2xl border border-slate-100 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-bold text-sm">درخواست مرخصی</h2>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-white font-bold"
+        >
+          {showForm ? "انصراف" : "+ درخواست جدید"}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="space-y-3 mb-4 p-3 rounded-xl bg-slate-50">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium">از تاریخ</label>
+              <input
+                required
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm bg-white"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium">تا تاریخ</label>
+              <input
+                required
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm bg-white"
+                dir="ltr"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium">دلیل (اختیاری)</label>
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm bg-white"
+            />
+          </div>
+          <button
+            disabled={submitting}
+            className="w-full py-2 rounded-lg bg-teal-600 text-white text-sm font-bold disabled:opacity-60"
+          >
+            {submitting ? "در حال ارسال..." : "ارسال درخواست"}
+          </button>
+        </form>
+      )}
+
+      {requests.length === 0 ? (
+        <p className="text-slate-400 text-xs">هنوز درخواستی ثبت نکرده‌اید.</p>
+      ) : (
+        <ul className="space-y-2">
+          {requests.map((r) => (
+            <li
+              key={r.id}
+              className="flex items-center justify-between text-xs bg-slate-50 rounded-lg px-3 py-2"
+            >
+              <span>
+                {r.start_date} تا {r.end_date}
+              </span>
+              <span className={`px-2 py-0.5 rounded-full ${statusColor[r.status]}`}>
+                {statusLabel[r.status]}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
