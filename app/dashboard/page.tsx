@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { formatShamsiDate } from "@/lib/shamsi";
 
 type Employee = {
   id: string;
@@ -19,6 +20,8 @@ type LeaveRequest = {
   end_date: string;
   reason: string | null;
   status: "pending" | "approved" | "rejected";
+  leave_type: "full_day" | "hourly";
+  hours: number | null;
 };
 
 type Organization = {
@@ -113,7 +116,7 @@ export default function DashboardPage() {
 
     const { data: leaves } = await supabase
       .from("leave_requests")
-      .select("id, employee_id, start_date, end_date, reason, status")
+      .select("id, employee_id, start_date, end_date, reason, status, leave_type, hours")
       .eq("organization_id", profile.organization_id)
       .order("created_at", { ascending: false });
     setLeaveRequests(leaves ?? []);
@@ -550,7 +553,12 @@ export default function DashboardPage() {
                   <div>
                     <p className="font-medium">{emp?.full_name ?? "کارمند"}</p>
                     <p className="text-xs text-slate-400">
-                      {r.start_date} تا {r.end_date}
+                      {formatShamsiDate(new Date(r.start_date))}
+                      {r.leave_type === "hourly"
+                        ? ` — ${r.hours} ساعت`
+                        : r.end_date !== r.start_date
+                        ? ` تا ${formatShamsiDate(new Date(r.end_date))}`
+                        : ""}
                       {r.reason ? ` — ${r.reason}` : ""}
                     </p>
                   </div>
