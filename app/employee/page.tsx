@@ -459,10 +459,38 @@ function LeaveSection({
     loadRequests();
   }, [loadRequests]);
 
+  useEffect(() => {
+    if (!profile) return;
+    const channel = supabase
+      .channel("my-leave-requests-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leave_requests" },
+        () => {
+          loadRequests();
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile, supabase, loadRequests]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!profile) return;
     setSubmitting(true);
+
+    let autoApprove = false;
+    if (profile.organization_id) {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("leave_auto_approve")
+        .eq("id", profile.organization_id)
+        .single();
+      autoApprove = !!org?.leave_auto_approve;
+    }
+
     await supabase.from("leave_requests").insert({
       employee_id: profile.id,
       organization_id: profile.organization_id,
@@ -471,6 +499,8 @@ function LeaveSection({
       reason: reason || null,
       leave_type: leaveType,
       hours: leaveType === "hourly" ? Number(hours) || null : null,
+      status: autoApprove ? "approved" : "pending",
+      reviewed_at: autoApprove ? new Date().toISOString() : null,
     });
     setStartDate("");
     setEndDate("");
