@@ -31,6 +31,7 @@ type Organization = {
   work_lat: number | null;
   work_lng: number | null;
   work_radius_meters: number | null;
+  leave_auto_approve: boolean;
 };
 
 export default function DashboardPage() {
@@ -90,7 +91,7 @@ export default function DashboardPage() {
 
     const { data: orgData } = await supabase
       .from("organizations")
-      .select("id, name, phone, work_lat, work_lng, work_radius_meters")
+      .select("id, name, phone, work_lat, work_lng, work_radius_meters, leave_auto_approve")
       .eq("id", profile.organization_id)
       .single();
     setOrg(orgData);
@@ -161,6 +162,25 @@ export default function DashboardPage() {
     };
   }, [supabase]);
 
+  // Live updates for leave requests too, so a new request from an
+  // employee shows up instantly without a manual refresh.
+  useEffect(() => {
+    const channel = supabase
+      .channel("leave-requests-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leave_requests" },
+        () => {
+          load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, load]);
+
   async function handleAddEmployee(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -227,6 +247,15 @@ export default function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ employeeId, isActive: !current }),
     });
+    load();
+  }
+
+  async function toggleAutoApprove() {
+    if (!org) return;
+    await supabase
+      .from("organizations")
+      .update({ leave_auto_approve: !org.leave_auto_approve })
+      .eq("id", org.id);
     load();
   }
 
@@ -533,12 +562,31 @@ export default function DashboardPage() {
 
       {/* Leave requests */}
       <div className="bg-white rounded-2xl border border-slate-100 p-5">
-        <h2 className="font-bold mb-4">
-          درخواست‌های مرخصی{" "}
-          <span className="text-slate-400 font-normal text-sm">
-            ({leaveRequests.filter((l) => l.status === "pending").length} در انتظار)
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-bold">
+            درخواست‌های مرخصی{" "}
+            <span className="text-slate-400 font-normal text-sm">
+              ({leaveRequests.filter((l) => l.status === "pending").length} در انتظار)
+            </span>
+          </h2>
+        </div>
+        <button
+          onClick={toggleAutoApprove}
+          className="flex items-center gap-2 mb-4 text-xs text-slate-500"
+        >
+          <span
+            className={`w-8 h-4 rounded-full relative transition-colors ${
+              org?.leave_auto_approve ? "bg-teal-600" : "bg-slate-200"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${
+                org?.leave_auto_approve ? "right-0.5" : "right-4"
+              }`}
+            />
           </span>
-        </h2>
+          تایید خودکار مرخصی‌ها (بدون نیاز به بررسی دستی)
+        </button>
         {leaveRequests.length === 0 ? (
           <p className="text-slate-400 text-sm">درخواستی ثبت نشده است.</p>
         ) : (
